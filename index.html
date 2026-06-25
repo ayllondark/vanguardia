@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEVANO · ERP Industrial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #c9c8c1; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  input, select, textarea, button { font-family: inherit; }
+  @keyframes fx-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fx-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fx-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes fx-grid { from { background-position: 0 0; } to { background-position: 44px 44px; } }
+  @keyframes fx-toast { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fx-bar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+"use strict";
+(function(){
+
+/* ============================================================
+   DEVANO · ERP Industrial
+   Standalone implementation of the Claude Design "Sistema DEVANO".
+   Pure vanilla JS — reactive state + string-template rendering.
+   ============================================================ */
+
+/* ---------- static data ---------- */
+const CATS = ['Ferretería','Seguridad','Herramientas','Eléctrico','Plomería','Construcción'];
+const CAT_COLORS = { 'Ferretería':'#3B6B8F', 'Seguridad':'#C2891C', 'Herramientas':'#7C5A8C', 'Eléctrico':'#2A9D8F', 'Plomería':'#3D7BB5', 'Construcción':'#B5663A' };
+const MONTHLY = [ {m:'Nov',v:182},{m:'Dic',v:210},{m:'Ene',v:168},{m:'Feb',v:195},{m:'Mar',v:224},{m:'Abr',v:248},{m:'May',v:236},{m:'Jun',v:268} ];
+const SUPPLIERS_META = {
+  'Aceros del Sur':{rubro:'Acero · construcción', rating:4.8, entregas:98},
+  'FerroAndes':{rubro:'Ferretería general', rating:4.6, entregas:95},
+  'Industrias Lima':{rubro:'Herramientas · pinturas', rating:4.5, entregas:92},
+  'ProSafety EIRL':{rubro:'Equipos de seguridad', rating:4.9, entregas:99},
+  'ElectroPerú SAC':{rubro:'Material eléctrico', rating:4.2, entregas:88},
+  'HidroTec':{rubro:'Plomería · bombas', rating:4.4, entregas:90},
+};
+const USERS_DATA = [
+  { name:'Carlos Medina', email:'carlos@devano.pe', role:'Administrador', status:'Activo', last:'hace 5 min', av:'#3B6B8F' },
+  { name:'Lucía Torres', email:'lucia@devano.pe', role:'Vendedor', status:'Activo', last:'hace 2 h', av:'#C2891C' },
+  { name:'Jorge Ramos', email:'jorge@devano.pe', role:'Almacén', status:'Activo', last:'ayer', av:'#2A9D8F' },
+  { name:'Ana Quispe', email:'ana@devano.pe', role:'Vendedor', status:'Activo', last:'hace 3 d', av:'#7C5A8C' },
+  { name:'Pedro Salas', email:'pedro@devano.pe', role:'Almacén', status:'Inactivo', last:'hace 2 sem', av:'#9a9ea4' },
+];
+const ICONS = {
+  dashboard:'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
+  productos:'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12.01l8.73-5.05M12 22.08V12',
+  cotizador:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+  reportes:'M3 3v18h18M18 17V9M13 17V5M8 17v-3',
+  proveedores:'M10 17h4V5H2v12h3M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1M5.5 17a2 2 0 1 0 4 0 2 2 0 1 0-4 0M16.5 17a2 2 0 1 0 4 0 2 2 0 1 0-4 0',
+  usuarios:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+};
+const ROLE_PERMS = {
+  dashboard: ['Administrador','Vendedor','Almacén'],
+  productos: ['Administrador','Vendedor','Almacén'],
+  cotizador: ['Administrador','Vendedor'],
+  reportes:  ['Administrador','Vendedor'],
+  proveedores:['Administrador','Almacén'],
+  usuarios:  ['Administrador'],
+};
+
+/* ---------- format helpers ---------- */
+const m  = (n) => 'S/ ' + (Number(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2, maximumFractionDigits:2});
+const mk = (n) => 'S/ ' + (Math.round(Number(n)/1000)) + 'k';
+const num = (n) => (Number(n)||0).toLocaleString('es-PE');
+const margenPct = (p) => p.compra ? ((p.venta - p.compra)/p.compra)*100 : 0;
+const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ---------- state ---------- */
+let STATE = {
+  screen: 'login',
+  role: 'Administrador',
+  nav: 'dashboard',
+  loginUser: 'admin@devano.pe',
+  loginPass: '',
+  search: '',
+  cat: 'Todas',
+  modal: null,        // null | 'new' | id
+  draft: null,
+  confirmDel: null,
+  toast: null,
+  quoteAddSel: '',
+  quote: {
+    cliente: 'Constructora Vega S.A.C.',
+    ruc: '20512345678',
+    items: [ { sku: 'CS-IND', qty: 40 }, { sku: 'GS-NTR', qty: 120 }, { sku: 'BR-PRO', qty: 25 } ],
+    addLabel: 'Flete e instalación',
+    addCost: 480,
+    notas: 'Entrega en obra (Lurín). Incluye certificados de calidad. Precios sujetos a stock.',
+  },
+  products: [
+    { id:1, sku:'RD-6204', nombre:'Rodamiento rígido de bolas 6204', cat:'Ferretería', prov:'FerroAndes', stock:240, stockMin:80, compra:8.5, venta:14.9, ventas:320, unidad:'und' },
+    { id:2, sku:'VL-2PG', nombre:'Válvula de bola 2" bronce', cat:'Plomería', prov:'HidroTec', stock:65, stockMin:40, compra:42, venta:69, ventas:145, unidad:'und' },
+    { id:3, sku:'TB-PVC4', nombre:'Tubería PVC 4" x 3m', cat:'Plomería', prov:'HidroTec', stock:18, stockMin:50, compra:28, venta:41, ventas:210, unidad:'und' },
+    { id:4, sku:'CS-IND', nombre:'Casco de seguridad industrial', cat:'Seguridad', prov:'ProSafety EIRL', stock:410, stockMin:100, compra:12, venta:22, ventas:540, unidad:'und' },
+    { id:5, sku:'GS-NTR', nombre:'Guantes nitrilo reforzado (par)', cat:'Seguridad', prov:'ProSafety EIRL', stock:1200, stockMin:300, compra:3.2, venta:6.5, ventas:1850, unidad:'par' },
+    { id:6, sku:'TL-13MM', nombre:'Taladro percutor 1/2" 750W', cat:'Herramientas', prov:'Industrias Lima', stock:34, stockMin:20, compra:185, venta:289, ventas:96, unidad:'und' },
+    { id:7, sku:'DC-115', nombre:'Disco de corte metal 4.5"', cat:'Herramientas', prov:'Industrias Lima', stock:95, stockMin:200, compra:2.1, venta:4.2, ventas:2400, unidad:'und' },
+    { id:8, sku:'PE-GAL', nombre:'Pintura epóxica gris (galón)', cat:'Construcción', prov:'Industrias Lima', stock:72, stockMin:30, compra:64, venta:98, ventas:130, unidad:'gal' },
+    { id:9, sku:'CB-25', nombre:'Cable THW 12 AWG (rollo 100m)', cat:'Eléctrico', prov:'ElectroPerú SAC', stock:28, stockMin:25, compra:145, venta:219, ventas:88, unidad:'rollo' },
+    { id:10, sku:'SD-E6011', nombre:'Soldadura E6011 1/8" (kg)', cat:'Construcción', prov:'Aceros del Sur', stock:310, stockMin:100, compra:9.8, venta:15.5, ventas:420, unidad:'kg' },
+    { id:11, sku:'BM-05', nombre:'Bomba periférica 0.5 HP', cat:'Eléctrico', prov:'HidroTec', stock:22, stockMin:15, compra:168, venta:255, ventas:64, unidad:'und' },
+    { id:12, sku:'MG-12', nombre:'Manguera reforzada 1/2" (m)', cat:'Plomería', prov:'HidroTec', stock:540, stockMin:200, compra:2.8, venta:5.2, ventas:760, unidad:'m' },
+    { id:13, sku:'CM-42', nombre:'Cemento Tipo I (bolsa 42.5kg)', cat:'Construcción', prov:'Aceros del Sur', stock:14, stockMin:60, compra:26, venta:33, ventas:980, unidad:'bolsa' },
+    { id:14, sku:'LL-INT', nombre:'Llave inglesa 12" cromada', cat:'Herramientas', prov:'FerroAndes', stock:130, stockMin:50, compra:22, venta:38, ventas:175, unidad:'und' },
+    { id:15, sku:'BR-PRO', nombre:'Botas de seguridad punta acero', cat:'Seguridad', prov:'ProSafety EIRL', stock:88, stockMin:60, compra:58, venta:92, ventas:240, unidad:'par' },
+  ],
+};
+
+let _toastTimer = null;
+function setState(patch){
+  const next = (typeof patch === 'function') ? patch(STATE) : patch;
+  STATE = Object.assign({}, STATE, next);
+  render();
+}
+function flash(msg){
+  setState({toast: msg});
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=>setState({toast:null}), 2600);
+}
+
+/* ---------- mutations ---------- */
+function go(nav){ setState({nav}); }
+function setRole(role){
+  const allowed = (ROLE_PERMS[STATE.nav]||[]).includes(role);
+  setState({ role, nav: allowed ? STATE.nav : 'dashboard' });
+}
+function openModal(prod){
+  const blank = { id:null, sku:'', nombre:'', cat:CATS[0], prov:Object.keys(SUPPLIERS_META)[0], stock:0, stockMin:0, compra:0, venta:0, ventas:0, unidad:'und' };
+  setState({ modal: prod ? prod.id : 'new', draft: prod ? Object.assign({}, prod) : blank });
+}
+function closeModal(){ setState({modal:null, draft:null}); }
+function setField(k){
+  return (e)=>{
+    const isNum = ['stock','stockMin','compra','venta'].includes(k);
+    const val = isNum ? (parseFloat(e.target.value)||0) : e.target.value;
+    setState(s=>({draft: Object.assign({}, s.draft, {[k]: val})}));
+  };
+}
+function saveProduct(){
+  const d = STATE.draft;
+  if(!d.nombre.trim()){ flash('Ingrese el nombre del producto'); return; }
+  setState(s=>{
+    let products = s.products.slice();
+    if(d.id){ products = products.map(p=> p.id===d.id ? Object.assign({},d) : p); }
+    else { products = [Object.assign({},d,{id: Date.now()}), ...products]; }
+    return { products, modal:null, draft:null };
+  });
+  flash(d.id ? 'Producto actualizado' : 'Producto agregado al inventario');
+}
+function askDelete(prod){ setState({confirmDel: prod}); }
+function doDelete(){
+  const id = STATE.confirmDel.id;
+  setState(s=>({ products: s.products.filter(p=>p.id!==id), confirmDel:null }));
+  flash('Producto eliminado');
+}
+function qSetItem(sku, delta){
+  setState(s=>{
+    const items = s.quote.items.map(i=> i.sku===sku ? Object.assign({},i,{qty: Math.max(1, i.qty+delta)}) : i);
+    return { quote: Object.assign({}, s.quote, {items}) };
+  });
+}
+function qRemove(sku){ setState(s=>({ quote: Object.assign({}, s.quote, {items: s.quote.items.filter(i=>i.sku!==sku)}) })); }
+function qAdd(){
+  const fallback = (STATE.products.find(p=> !STATE.quote.items.some(i=>i.sku===p.sku))||{}).sku;
+  const sku = STATE.quoteAddSel || fallback;
+  if(!sku) return;
+  if(STATE.quote.items.some(i=>i.sku===sku)){ qSetItem(sku, 1); return; }
+  setState(s=>({ quote: Object.assign({}, s.quote, {items:[...s.quote.items, {sku, qty:1}]}) }));
+}
+function qField(k){
+  return (e)=>{
+    const isNum = k==='addCost';
+    const val = isNum ? (parseFloat(e.target.value)||0) : e.target.value;
+    setState(s=>({ quote: Object.assign({}, s.quote, {[k]: val}) }));
+  };
+}
+
+/* ---------- computed values (port of renderVals) ---------- */
+function computeVals(){
+  const S = STATE;
+  const byId = (sku)=> S.products.find(p=>p.sku===sku);
+
+  // nav
+  const navOrder = ['dashboard','productos','cotizador','reportes','proveedores','usuarios'];
+  const labels = { dashboard:'Panel principal', productos:'Productos', cotizador:'Cotizaciones', reportes:'Reportes', proveedores:'Proveedores', usuarios:'Usuarios y accesos' };
+  const lowCount = S.products.filter(p=>p.stock<=p.stockMin).length;
+  const navItems = navOrder.filter(k=> ROLE_PERMS[k].includes(S.role)).map(k=>{
+    const active = S.nav===k;
+    return { key:k, label: labels[k], icon:ICONS[k], go:()=>go(k),
+      bg: active ? 'var(--accent)' : 'transparent', color: active ? '#fff' : 'rgba(255,255,255,.66)',
+      badge: k==='productos' && lowCount ? String(lowCount) : '' };
+  });
+
+  // KPIs
+  const valorInv = S.products.reduce((a,p)=>a + p.stock*p.compra, 0);
+  const margProm = S.products.reduce((a,p)=>a + margenPct(p),0)/S.products.length;
+  const ventasMes = MONTHLY[MONTHLY.length-1].v*1000;
+  const kpis = [
+    { label:'Ventas del mes', value:mk(ventasMes), delta:'▲ 12.6%', dc:'var(--green)', db:'#E7F3EC', tint:'var(--softorange)', ic:'var(--accent)', icon:'M3 3v18h18M18 17V9M13 17V5M8 17v-3' },
+    { label:'Valor de inventario', value:mk(valorInv), delta:'▲ 3.2%', dc:'var(--green)', db:'#E7F3EC', tint:'#E9F0F4', ic:'var(--steel)', icon:'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12.01l8.73-5.05M12 22.08V12' },
+    { label:'Margen promedio', value:margProm.toFixed(1)+'%', delta:'▲ 1.4%', dc:'var(--green)', db:'#E7F3EC', tint:'#EEEAF2', ic:'#7C5A8C', icon:'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
+    { label:'Alertas de stock', value:String(lowCount), delta:'Revisar', dc:'var(--accent2)', db:'var(--softorange)', tint:'#FBE9E0', ic:'var(--red)', icon:'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01' },
+  ];
+
+  // ventas chart
+  const mv = MONTHLY, maxV = Math.max.apply(null, mv.map(d=>d.v));
+  const W=620,H=200,pad=14;
+  const pts = mv.map((d,i)=>{ const x = pad + i*((W-2*pad)/(mv.length-1)); const y = H-pad - (d.v/maxV)*(H-2*pad-14); return [x,y]; });
+  const ventasPoints = pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const ventasArea = 'M'+pad+','+(H-pad)+' L'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L')+' L'+(W-pad)+','+(H-pad)+' Z';
+
+  // top products
+  const top = S.products.slice().sort((a,b)=>b.ventas-a.ventas).slice(0,6);
+  const maxVentas = Math.max.apply(null, top.map(p=>p.ventas));
+  const barCols = ['var(--accent)','#3B6B8F','#2A9D8F','#C2891C','#7C5A8C','#B5663A'];
+  const topBars = top.map((p,i)=>({ sku:p.sku, val:num(p.ventas), h: Math.max(8,(p.ventas/maxVentas)*100), col:barCols[i] }));
+
+  // low stock
+  const lowStock = S.products.filter(p=>p.stock<=p.stockMin).sort((a,b)=>(a.stock/a.stockMin)-(b.stock/b.stockMin)).slice(0,5).map(p=>({
+    nombre:p.nombre, sku:p.sku, prov:p.prov, stock:p.stock, stockMin:p.stockMin, unidad:p.unidad,
+    dot: p.stock < p.stockMin*0.5 ? 'var(--red)' : 'var(--amber)'
+  }));
+
+  // proveedores agg
+  const provAgg = {};
+  S.products.forEach(p=>{ provAgg[p.prov] = (provAgg[p.prov]||0) + p.stock*p.compra; });
+  const provSorted = Object.keys(provAgg).map(name=>({name, val:provAgg[name]})).sort((a,b)=>b.val-a.val);
+  const maxProv = provSorted[0]?provSorted[0].val:1;
+  const provBars = provSorted.map((s,i)=>({ name:s.name, val:mk(s.val), w: Math.max(6,(s.val/maxProv)*100), col: barCols[i%barCols.length] }));
+
+  // productos table
+  let list = S.products.slice();
+  if(S.cat!=='Todas') list = list.filter(p=>p.cat===S.cat);
+  if(S.search.trim()){ const q=S.search.toLowerCase(); list = list.filter(p=> (p.nombre+' '+p.sku+' '+p.prov).toLowerCase().includes(q)); }
+  const rows = list.map(p=>{
+    const mp = margenPct(p);
+    const ratio = p.stock/p.stockMin;
+    const sCol = ratio<0.5?'var(--red)':ratio<1?'var(--amber)':'var(--green)';
+    const cc = CAT_COLORS[p.cat]||'#3B6B8F';
+    return Object.assign({}, p, { compraF:m(p.compra), ventaF:m(p.venta), margen:mp.toFixed(0)+'%',
+      mCol: mp>=35?'var(--green)':mp>=20?'var(--amber)':'var(--red)',
+      stockPct: Math.min(100, (p.stock/(p.stockMin*2))*100), sCol,
+      catBg: cc+'1a', catCol: cc,
+      edit:()=>openModal(p), del:()=>askDelete(p) });
+  });
+  const filteredValue = m(list.reduce((a,p)=>a+p.stock*p.compra,0));
+  const canEdit = (S.role==='Administrador' || S.role==='Almacén');
+
+  const catChips = ['Todas'].concat(CATS).map(c=>({ label:c, pick:()=>setState({cat:c}),
+    bg: S.cat===c?'var(--ink)':'transparent', color: S.cat===c?'#fff':'var(--soft)' }));
+
+  // cotizador
+  const quoteLines = S.quote.items.map(it=>{ const p=byId(it.sku)||{nombre:it.sku,venta:0}; const importe = p.venta*it.qty;
+    return { sku:it.sku, nombre:p.nombre, qty:it.qty, unit:m(p.venta), importe:m(importe),
+      inc:()=>qSetItem(it.sku,1), dec:()=>qSetItem(it.sku,-1), remove:()=>qRemove(it.sku) }; });
+  const subtotal = S.quote.items.reduce((a,it)=>{ const p=byId(it.sku); return a + (p?p.venta*it.qty:0); },0);
+  const base = subtotal + Number(S.quote.addCost||0);
+  const igv = base*0.18, total = base*1.18;
+  const cost = S.quote.items.reduce((a,it)=>{ const p=byId(it.sku); return a + (p?p.compra*it.qty:0); },0);
+  const profit = base - cost;
+  const marginPct = base>0 ? (profit/base)*100 : 0;
+  const addable = S.products.filter(p=> !S.quote.items.some(i=>i.sku===p.sku)).map(p=>({sku:p.sku, label:p.nombre+'  ·  '+m(p.venta)}));
+
+  // reportes: donut + margen cat
+  const catVal = CATS.map(c=>({ label:c, val: S.products.filter(p=>p.cat===c).reduce((a,p)=>a+p.stock*p.compra,0), col:CAT_COLORS[c] }));
+  const totVal = catVal.reduce((a,c)=>a+c.val,0)||1;
+  let acc = 0; const stops = catVal.map(c=>{ const start=acc/totVal*100; acc+=c.val; const end=acc/totVal*100; return c.col+' '+start.toFixed(1)+'% '+end.toFixed(1)+'%'; });
+  const donutBg = 'conic-gradient('+stops.join(', ')+')';
+  const donutLegend = catVal.map(c=>({ label:c.label, col:c.col, pct: ((c.val/totVal)*100).toFixed(0)+'%' }));
+  const margenCat0 = CATS.map(c=>{ const ps=S.products.filter(p=>p.cat===c); const mg = ps.length? ps.reduce((a,p)=>a+margenPct(p),0)/ps.length:0; return {c, mg, col:CAT_COLORS[c]}; })
+    .sort((a,b)=>b.mg-a.mg);
+  const maxMg = Math.max.apply(null, margenCat0.map(x=>x.mg));
+  const margenCat = margenCat0.map(x=>({ label:x.c, pct:x.mg.toFixed(0)+'%', w:Math.max(6,(x.mg/maxMg)*100), col:x.col }));
+
+  const rot = S.products.map(p=>Object.assign({},p,{ingresos:p.venta*p.ventas})).sort((a,b)=>b.ingresos-a.ingresos).slice(0,8);
+  const maxRot = Math.max.apply(null, rot.map(r=>r.ventas));
+  const rotacion = rot.map(r=>({ nombre:r.nombre, sku:r.sku, ventas:num(r.ventas), ingresos:m(r.ingresos), margen:margenPct(r).toFixed(0)+'%', w:Math.max(6,(r.ventas/maxRot)*100) }));
+
+  // proveedores cards
+  const medal = ['#F5E3B3','#E4E4DE','#EBD3C0'];
+  const medalC = ['#9A7B16','#6B6F76','#9A5A2E'];
+  const provCards = provSorted.map((s,i)=>{ const meta=SUPPLIERS_META[s.name]||{rubro:'',rating:0,entregas:0};
+    const full=Math.round(meta.rating); const stars='★★★★★'.slice(0,full)+'☆☆☆☆☆'.slice(0,5-full);
+    const cnt = S.products.filter(p=>p.prov===s.name).length;
+    const cc = barCols[i%barCols.length];
+    return { name:s.name, rubro:meta.rubro, rating:meta.rating.toFixed(1), stars, valor:mk(s.val), productos:cnt,
+      entregas:meta.entregas+'%', entCol: meta.entregas>=95?'var(--green)':meta.entregas>=90?'var(--amber)':'var(--red)',
+      rank:'#'+(i+1), medalBg: i<3?medal[i]:'var(--bg)', medalCol: i<3?medalC[i]:'var(--muted)',
+      ini: s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(), tint:cc+'1a', iconCol:cc }; });
+
+  // usuarios
+  const roleBadge = { 'Administrador':{rb:'var(--softorange)',rc:'var(--accent2)'}, 'Vendedor':{rb:'#E9F0F4',rc:'var(--steel)'}, 'Almacén':{rb:'#E7F3EC',rc:'var(--green)'} };
+  const users = USERS_DATA.map(u=>Object.assign({}, u, { ini:u.name.split(' ').map(w=>w[0]).join('').slice(0,2),
+    avBg:u.av, rb:roleBadge[u.role].rb, rc:roleBadge[u.role].rc, sd: u.status==='Activo'?'var(--green)':'var(--muted)' }));
+  const sym = (lvl)=> lvl==='full'?{sym:'●',col:'var(--green)'} : lvl==='read'?{sym:'◐',col:'var(--amber)'} : {sym:'○',col:'#c9c8c1'};
+  const permMatrix = [
+    { mod:'Panel principal', a:sym('full'), v:sym('full'), w:sym('full') },
+    { mod:'Productos', a:sym('full'), v:sym('read'), w:sym('full') },
+    { mod:'Cotizaciones', a:sym('full'), v:sym('full'), w:sym('none') },
+    { mod:'Reportes', a:sym('full'), v:sym('read'), w:sym('none') },
+    { mod:'Proveedores', a:sym('full'), v:sym('none'), w:sym('full') },
+    { mod:'Usuarios y accesos', a:sym('full'), v:sym('none'), w:sym('none') },
+  ];
+
+  // draft margin
+  let draftMargin = '—';
+  if(S.draft && Number(S.draft.compra)>0){ draftMargin = (((S.draft.venta-S.draft.compra)/S.draft.compra)*100).toFixed(0)+'%'; }
+
+  const roleChips = [
+    {key:'Administrador', label:'Admin'}, {key:'Vendedor', label:'Vendedor'}, {key:'Almacén', label:'Almacén'},
+  ].map(r=>({ label:r.label, pick:()=>setState({role:r.key, loginUser: r.key==='Administrador'?'admin@devano.pe':r.key==='Vendedor'?'lucia@devano.pe':'jorge@devano.pe'}),
+    bg: S.role===r.key?'var(--ink)':'#fff', color: S.role===r.key?'#fff':'var(--soft)', border: S.role===r.key?'var(--ink)':'var(--line)' }));
+
+  const me = USERS_DATA.find(u=>u.role===S.role) || USERS_DATA[0];
+
+  return {
+    isLogin: S.screen==='login', isApp: S.screen==='app',
+    isDash: S.nav==='dashboard', isProd: S.nav==='productos', isCot: S.nav==='cotizador',
+    isRep: S.nav==='reportes', isProv: S.nav==='proveedores', isUsr: S.nav==='usuarios',
+    role:S.role, search:S.search,
+    loginUser:S.loginUser, loginPass:S.loginPass, roleChips,
+    onLoginUser:(e)=>setState({loginUser:e.target.value}),
+    onLoginPass:(e)=>setState({loginPass:e.target.value}),
+    doLogin:()=>setState({screen:'app', nav:'dashboard'}),
+    logout:()=>setState({screen:'login'}),
+    onSearch:(e)=>{ setState({search:e.target.value, nav:'productos'}); },
+    onRole:(e)=>setRole(e.target.value),
+    navItems, userName:me.name, userInitials: me.name.split(' ').map(w=>w[0]).join('').slice(0,2),
+    crumb: 'DEVANO  ·  '+labels[S.nav], pageTitle: labels[S.nav],
+    goProductos:()=>go('productos'),
+    kpis, ventasPoints, ventasArea, ventasMesF:m(ventasMes), months: MONTHLY.map(d=>d.m),
+    topBars, lowStock, provBars,
+    catChips, rows, prodCount:list.length, filteredValue, canEdit, readOnly:!canEdit,
+    openNew:()=>openModal(null),
+    quote:S.quote, quoteLines, quoteAddSel:S.quoteAddSel, addable,
+    qSubtotal:m(subtotal), qBase:m(base), qIgv:m(igv), qTotal:m(total),
+    qCost:m(cost), qProfit:m(profit), qMarginPct:marginPct.toFixed(1)+'%', qMarginBar:Math.min(100,marginPct),
+    qCliente:qField('cliente'), qRuc:qField('ruc'), qAddLabel:qField('addLabel'),
+    qAddCost:qField('addCost'), qNotas:qField('notas'),
+    qAddSel:(e)=>setState({quoteAddSel:e.target.value}), qAddItem:()=>qAdd(),
+    genQuote:()=>flash('Cotización COT-2026-0192 generada con el logo de DEVANO'),
+    donutBg, donutLegend, invTotal:mk(totVal), margenCat, rotacion,
+    provCards,
+    users, permMatrix, addUser:()=>flash('Invitación enviada al nuevo usuario'),
+    modalOpen: S.modal!==null, draft:S.draft, modalTitle: S.modal==='new'?'Nuevo producto':'Editar producto',
+    saveLabel: S.modal==='new'?'Agregar producto':'Guardar cambios',
+    allCats:CATS, allProvs:Object.keys(SUPPLIERS_META), draftMargin,
+    set:{ nombre:setField('nombre'), sku:setField('sku'), unidad:setField('unidad'),
+      cat:setField('cat'), prov:setField('prov'), stock:setField('stock'),
+      stockMin:setField('stockMin'), compra:setField('compra'), venta:setField('venta') },
+    closeModal:()=>closeModal(), saveProduct:()=>saveProduct(), stop:(e)=>e.stopPropagation(),
+    delOpen: S.confirmDel!==null, delName: S.confirmDel?S.confirmDel.nombre:'',
+    cancelDel:()=>setState({confirmDel:null}), confirmDelete:()=>doDelete(),
+    toast:S.toast,
+  };
+}
+
+/* ---------- handler registry (rebuilt every render) ---------- */
+let _handlers = [];
+function reg(fn){ _handlers.push(fn); return _handlers.length-1; }
+// shorthand binding attrs
+const click = (fn)=> 'data-click="'+reg(fn)+'"';
+const input = (fn)=> 'data-input="'+reg(fn)+'"';
+const change = (fn)=> 'data-change="'+reg(fn)+'"';
+const hover = (css)=> 'data-hover="'+esc(css)+'"';
+
+/* ---------- templates ---------- */
+function tLogin(V){
+  return ''+
+  '<div style="display:flex; min-height:100vh; background:#EEEDE8;">'+
+    '<div style="flex:1.05; background:#16181D; color:#fff; position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; padding:48px 52px;">'+
+      '<div style="position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px); background-size:44px 44px; animation:fx-grid 9s linear infinite;"></div>'+
+      '<div style="position:absolute; right:-160px; top:-120px; width:460px; height:460px; border-radius:50%; background:radial-gradient(circle at 30% 30%, rgba(242,84,27,.45), transparent 62%); filter:blur(8px);"></div>'+
+      '<div style="position:relative; display:flex; align-items:center; gap:13px;">'+
+        '<div style="width:42px; height:42px; border-radius:10px; background:linear-gradient(150deg,#F2541B,#D8430F); display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(242,84,27,.35);">'+logoSvg(22)+'</div>'+
+        '<div><div style="font-family:\'Space Grotesk\'; font-weight:700; font-size:19px; letter-spacing:.04em;">DEVANO</div><div style="font-size:10.5px; letter-spacing:.32em; color:rgba(255,255,255,.5); text-transform:uppercase;">Suministros Industriales</div></div>'+
+      '</div>'+
+      '<div style="position:relative; animation:fx-up .7s cubic-bezier(.2,.7,.2,1) both;">'+
+        '<div style="display:inline-block; font-family:\'IBM Plex Mono\'; font-size:11px; letter-spacing:.18em; color:#F2541B; border:1px solid rgba(242,84,27,.45); padding:5px 11px; border-radius:99px; margin-bottom:22px;">ERP · INVENTARIO · COTIZACIONES</div>'+
+        '<h1 style="font-family:\'Space Grotesk\'; font-weight:600; font-size:42px; line-height:1.08; margin:0 0 18px; max-width:13ch;">Control total de su catálogo industrial.</h1>'+
+        '<p style="color:rgba(255,255,255,.6); font-size:15px; max-width:42ch; margin:0;">Registre compras a proveedores, calcule márgenes, controle stock y genere cotizaciones con su marca en segundos.</p>'+
+        '<div style="display:flex; gap:30px; margin-top:34px;">'+
+          '<div><div style="font-family:\'IBM Plex Mono\'; font-size:26px; color:#fff;">1,540</div><div style="font-size:12px; color:rgba(255,255,255,.45);">SKU gestionados</div></div>'+
+          '<div style="width:1px; background:rgba(255,255,255,.12);"></div>'+
+          '<div><div style="font-family:\'IBM Plex Mono\'; font-size:26px; color:#fff;">38%</div><div style="font-size:12px; color:rgba(255,255,255,.45);">Margen promedio</div></div>'+
+          '<div style="width:1px; background:rgba(255,255,255,.12);"></div>'+
+          '<div><div style="font-family:\'IBM Plex Mono\'; font-size:26px; color:#fff;">6</div><div style="font-size:12px; color:rgba(255,255,255,.45);">Proveedores</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="position:relative; font-size:12px; color:rgba(255,255,255,.4);">© 2026 DEVANO SAC · Lima, Perú</div>'+
+    '</div>'+
+    '<div style="flex:.95; display:flex; align-items:center; justify-content:center; padding:40px;">'+
+      '<div style="width:100%; max-width:380px; animation:fx-up .6s cubic-bezier(.2,.7,.2,1) both;">'+
+        '<h2 style="font-family:\'Space Grotesk\'; font-weight:600; font-size:27px; margin:0 0 6px;">Bienvenido de nuevo</h2>'+
+        '<p style="color:var(--muted); font-size:14px; margin:0 0 28px;">Ingrese sus credenciales para acceder al sistema.</p>'+
+        '<label style="display:block; font-size:12.5px; font-weight:600; color:var(--soft); margin-bottom:7px;">Correo corporativo</label>'+
+        '<input '+input(V.onLoginUser)+' data-field="loginUser" value="'+esc(V.loginUser)+'" style="width:100%; height:46px; padding:0 14px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:#fff; outline:none; margin-bottom:18px;" />'+
+        '<label style="display:block; font-size:12.5px; font-weight:600; color:var(--soft); margin-bottom:7px;">Contraseña</label>'+
+        '<input type="password" '+input(V.onLoginPass)+' data-field="loginPass" value="'+esc(V.loginPass)+'" placeholder="••••••••" style="width:100%; height:46px; padding:0 14px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:#fff; outline:none; margin-bottom:14px;" />'+
+        '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">'+
+          '<label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--soft); cursor:pointer;"><input type="checkbox" checked style="accent-color:var(--accent); width:15px; height:15px;" /> Recordarme</label>'+
+          '<span style="font-size:13px; color:var(--accent); font-weight:500; cursor:pointer;">¿Olvidó su clave?</span>'+
+        '</div>'+
+        '<label style="display:block; font-size:12.5px; font-weight:600; color:var(--soft); margin-bottom:7px;">Ingresar como (demo)</label>'+
+        '<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:22px;">'+
+          V.roleChips.map(r=>'<button '+click(r.pick)+' style="height:38px; border-radius:9px; border:1px solid '+r.border+'; background:'+r.bg+'; color:'+r.color+'; font-size:12.5px; font-weight:600; cursor:pointer;">'+esc(r.label)+'</button>').join('')+
+        '</div>'+
+        '<button '+click(V.doLogin)+' '+hover('background:var(--accent2)')+' style="width:100%; height:48px; border:none; border-radius:10px; background:var(--accent); color:#fff; font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 8px 20px rgba(242,84,27,.3); display:flex; align-items:center; justify-content:center; gap:9px;">Ingresar al sistema'+
+          '<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function logoSvg(sz){
+  return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 24 24" fill="none"><path d="M4 7l8-4 8 4M4 7l8 4 8-4M4 7v10l8 4 8-4V7M12 11v10" stroke="#fff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+
+function tSidebar(V){
+  return ''+
+  '<aside style="width:248px; flex-shrink:0; background:var(--panel); color:#fff; display:flex; flex-direction:column; padding:18px 14px;">'+
+    '<div style="display:flex; align-items:center; gap:11px; padding:6px 8px 18px;">'+
+      '<div style="width:36px; height:36px; border-radius:9px; background:linear-gradient(150deg,#F2541B,#D8430F); display:flex; align-items:center; justify-content:center;">'+logoSvg(19)+'</div>'+
+      '<div><div style="font-family:\'Space Grotesk\'; font-weight:700; font-size:15.5px; letter-spacing:.03em;">DEVANO</div><div style="font-size:9px; letter-spacing:.26em; color:rgba(255,255,255,.4); text-transform:uppercase;">ERP Industrial</div></div>'+
+    '</div>'+
+    '<div style="font-size:10px; letter-spacing:.18em; color:rgba(255,255,255,.32); text-transform:uppercase; padding:8px 10px 6px;">Operación</div>'+
+    '<nav style="display:flex; flex-direction:column; gap:3px;">'+
+      V.navItems.map(n=>''+
+        '<button '+click(n.go)+' style="display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:10px 11px; border:none; border-radius:9px; cursor:pointer; font-size:13.5px; font-weight:500; background:'+n.bg+'; color:'+n.color+';">'+
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="'+n.icon+'" stroke="'+n.color+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'+
+          '<span style="flex:1;">'+esc(n.label)+'</span>'+
+          (n.badge ? '<span style="background:var(--accent); color:#fff; font-size:10.5px; font-weight:700; min-width:18px; height:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; padding:0 5px; font-family:\'IBM Plex Mono\';">'+esc(n.badge)+'</span>' : '')+
+        '</button>').join('')+
+    '</nav>'+
+    '<div style="flex:1;"></div>'+
+    '<div style="background:var(--panel2); border-radius:11px; padding:13px;">'+
+      '<div style="font-size:11px; color:rgba(255,255,255,.5); margin-bottom:8px;">Plan de almacenamiento</div>'+
+      '<div style="height:6px; border-radius:4px; background:rgba(255,255,255,.12); overflow:hidden; margin-bottom:8px;"><div style="height:100%; width:64%; background:var(--accent); border-radius:4px;"></div></div>'+
+      '<div style="font-size:11px; color:rgba(255,255,255,.45); font-family:\'IBM Plex Mono\';">1,540 / 2,400 SKU</div>'+
+    '</div>'+
+    '<div style="display:flex; align-items:center; gap:10px; margin-top:14px; padding:9px 8px; border-top:1px solid rgba(255,255,255,.08);">'+
+      '<div style="width:34px; height:34px; border-radius:50%; background:linear-gradient(140deg,#3B6B8F,#23272F); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px;">'+esc(V.userInitials)+'</div>'+
+      '<div style="flex:1; min-width:0;"><div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">'+esc(V.userName)+'</div><div style="font-size:11px; color:rgba(255,255,255,.45);">'+esc(V.role)+'</div></div>'+
+      '<button '+click(V.logout)+' title="Salir" style="background:none; border:none; cursor:pointer; padding:4px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 17l5-5-5-5M21 12H9M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
+    '</div>'+
+  '</aside>';
+}
+
+function tTopbar(V){
+  return ''+
+  '<header style="height:64px; flex-shrink:0; background:#fff; border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 26px; gap:18px;">'+
+    '<div style="flex:1;"><div style="font-size:11px; color:var(--muted); letter-spacing:.04em;">'+esc(V.crumb)+'</div><div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:18px;">'+esc(V.pageTitle)+'</div></div>'+
+    '<div style="position:relative;">'+
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="position:absolute; left:12px; top:11px;"><circle cx="11" cy="11" r="7" stroke="#9a9ea4" stroke-width="1.8"/><path d="M21 21l-4-4" stroke="#9a9ea4" stroke-width="1.8" stroke-linecap="round"/></svg>'+
+      '<input '+input(V.onSearch)+' data-field="search" value="'+esc(V.search)+'" placeholder="Buscar productos, SKU, proveedor..." style="width:280px; height:38px; padding:0 12px 0 36px; border:1px solid var(--line); border-radius:9px; font-size:13px; background:var(--bg); outline:none;" />'+
+    '</div>'+
+    '<div style="display:flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:0 11px; height:38px;">'+
+      '<span style="font-size:11.5px; color:var(--muted);">Rol:</span>'+
+      '<select '+change(V.onRole)+' data-field="roleSel" style="border:none; background:none; font-size:13px; font-weight:600; color:var(--ink); outline:none; cursor:pointer;">'+
+        ['Administrador','Vendedor','Almacén'].map(o=>'<option'+(o===V.role?' selected':'')+'>'+o+'</option>').join('')+
+      '</select>'+
+    '</div>'+
+    '<button style="width:38px; height:38px; border:1px solid var(--line); border-radius:9px; background:#fff; cursor:pointer; position:relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="margin-top:2px;"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke="#5a5e64" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="position:absolute; top:8px; right:9px; width:7px; height:7px; background:var(--accent); border-radius:50%; border:1.5px solid #fff;"></span></button>'+
+  '</header>';
+}
+
+function tDash(V){
+  return ''+
+  '<div style="animation:fx-in .4s both;">'+
+    '<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:18px;">'+
+      V.kpis.map(k=>''+
+        '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:17px 18px;">'+
+          '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">'+
+            '<div style="width:34px; height:34px; border-radius:9px; background:'+k.tint+'; display:flex; align-items:center; justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="'+k.icon+'" stroke="'+k.ic+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'+
+            '<span style="font-size:11.5px; font-weight:600; color:'+k.dc+'; background:'+k.db+'; padding:3px 7px; border-radius:6px; font-family:\'IBM Plex Mono\';">'+esc(k.delta)+'</span>'+
+          '</div>'+
+          '<div style="font-family:\'IBM Plex Mono\'; font-weight:500; font-size:25px; letter-spacing:-.01em;">'+esc(k.value)+'</div>'+
+          '<div style="font-size:12.5px; color:var(--muted); margin-top:2px;">'+esc(k.label)+'</div>'+
+        '</div>').join('')+
+    '</div>'+
+    '<div style="display:grid; grid-template-columns:1.55fr 1fr; gap:16px; margin-bottom:16px;">'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px 20px;">'+
+        '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">'+
+          '<div><div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px;">Ventas mensuales</div><div style="font-size:12px; color:var(--muted);">Últimos 8 meses · soles</div></div>'+
+          '<div style="text-align:right;"><div style="font-family:\'IBM Plex Mono\'; font-size:20px; font-weight:500;">'+esc(V.ventasMesF)+'</div><div style="font-size:11.5px; color:var(--green); font-weight:600;">▲ 12.6% vs. mes anterior</div></div>'+
+        '</div>'+
+        '<svg viewBox="0 0 620 200" preserveAspectRatio="none" width="100%" height="190" style="display:block;">'+
+          '<defs><linearGradient id="vg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2541B" stop-opacity=".22"/><stop offset="1" stop-color="#F2541B" stop-opacity="0"/></linearGradient></defs>'+
+          '<line x1="12" y1="60" x2="608" y2="60" stroke="#EFEEE9" stroke-width="1"/><line x1="12" y1="110" x2="608" y2="110" stroke="#EFEEE9" stroke-width="1"/><line x1="12" y1="160" x2="608" y2="160" stroke="#EFEEE9" stroke-width="1"/>'+
+          '<path d="'+V.ventasArea+'" fill="url(#vg)"/>'+
+          '<polyline points="'+V.ventasPoints+'" fill="none" stroke="#F2541B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
+        '</svg>'+
+        '<div style="display:flex; justify-content:space-between; margin-top:6px;">'+V.months.map(mo=>'<span style="font-size:11px; color:var(--muted); font-family:\'IBM Plex Mono\';">'+esc(mo)+'</span>').join('')+'</div>'+
+      '</div>'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px 20px;">'+
+        '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px;">Mejores productos</div>'+
+        '<div style="font-size:12px; color:var(--muted); margin-bottom:18px;">Unidades vendidas · mes</div>'+
+        '<div style="display:flex; align-items:flex-end; gap:11px; height:150px;">'+
+          V.topBars.map(b=>''+
+            '<div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; height:100%; justify-content:flex-end;">'+
+              '<span style="font-size:10.5px; color:var(--soft); font-family:\'IBM Plex Mono\';">'+esc(b.val)+'</span>'+
+              '<div style="width:100%; max-width:30px; height:'+b.h+'%; background:'+b.col+'; border-radius:6px 6px 3px 3px; transform-origin:bottom; animation:fx-bar .6s cubic-bezier(.2,.8,.2,1) both;"></div>'+
+              '<span style="font-size:10px; color:var(--muted); text-align:center; line-height:1.15;">'+esc(b.sku)+'</span>'+
+            '</div>').join('')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid; grid-template-columns:1.25fr 1fr; gap:16px;">'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px 20px;">'+
+        '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">'+
+          '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px;">Alertas de stock</div>'+
+          '<span '+click(V.goProductos)+' style="font-size:12px; color:var(--accent); font-weight:600; cursor:pointer;">Ver inventario →</span>'+
+        '</div>'+
+        V.lowStock.map(p=>''+
+          '<div style="display:flex; align-items:center; gap:13px; padding:10px 0; border-bottom:1px solid var(--line2);">'+
+            '<div style="width:9px; height:9px; border-radius:50%; background:'+p.dot+'; flex-shrink:0;"></div>'+
+            '<div style="flex:1; min-width:0;"><div style="font-size:13px; font-weight:500;">'+esc(p.nombre)+'</div><div style="font-size:11.5px; color:var(--muted); font-family:\'IBM Plex Mono\';">'+esc(p.sku)+' · '+esc(p.prov)+'</div></div>'+
+            '<div style="text-align:right;"><div style="font-family:\'IBM Plex Mono\'; font-size:13px; font-weight:600; color:'+p.dot+';">'+esc(p.stock)+' '+esc(p.unidad)+'</div><div style="font-size:11px; color:var(--muted);">mín. '+esc(p.stockMin)+'</div></div>'+
+          '</div>').join('')+
+      '</div>'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px 20px;">'+
+        '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px; margin-bottom:3px;">Ranking de proveedores</div>'+
+        '<div style="font-size:12px; color:var(--muted); margin-bottom:16px;">Por valor de compra</div>'+
+        V.provBars.map(s=>''+
+          '<div style="margin-bottom:13px;">'+
+            '<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12.5px; font-weight:500;">'+esc(s.name)+'</span><span style="font-size:12px; font-family:\'IBM Plex Mono\'; color:var(--soft);">'+esc(s.val)+'</span></div>'+
+            '<div style="height:7px; background:var(--line2); border-radius:4px; overflow:hidden;"><div style="height:100%; width:'+s.w+'%; background:'+s.col+'; border-radius:4px;"></div></div>'+
+          '</div>').join('')+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function tProd(V){
+  return ''+
+  '<div style="animation:fx-in .4s both;">'+
+    '<div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">'+
+      '<div style="display:flex; gap:6px; background:#fff; border:1px solid var(--line); border-radius:9px; padding:4px;">'+
+        V.catChips.map(c=>'<button '+click(c.pick)+' style="padding:6px 13px; border:none; border-radius:6px; font-size:12.5px; font-weight:500; cursor:pointer; background:'+c.bg+'; color:'+c.color+';">'+esc(c.label)+'</button>').join('')+
+      '</div>'+
+      '<div style="flex:1;"></div>'+
+      '<div style="font-size:13px; color:var(--muted);">'+esc(V.prodCount)+' productos · valor <span style="font-family:\'IBM Plex Mono\'; color:var(--soft); font-weight:600;">'+esc(V.filteredValue)+'</span></div>'+
+      (V.canEdit ? '<button '+click(V.openNew)+' '+hover('background:var(--accent2)')+' style="height:38px; padding:0 16px; border:none; border-radius:9px; background:var(--accent); color:#fff; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:7px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>Nuevo producto</button>' : '')+
+    '</div>'+
+    '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; overflow:hidden;">'+
+      '<table style="width:100%; border-collapse:collapse; font-size:13px;">'+
+        '<thead><tr style="background:var(--bg);">'+
+          th('Producto','left','18px')+th('Categoría','left','12px')+th('Proveedor','left','12px')+th('Compra','right','12px')+th('Venta','right','12px')+th('Margen','right','12px')+th('Stock','left','12px')+'<th style="padding:12px 18px;"></th>'+
+        '</tr></thead>'+
+        '<tbody>'+
+          V.rows.map(p=>''+
+            '<tr style="border-top:1px solid var(--line2);">'+
+              '<td style="padding:12px 18px;"><div style="font-weight:600;">'+esc(p.nombre)+'</div><div style="font-size:11.5px; color:var(--muted); font-family:\'IBM Plex Mono\';">'+esc(p.sku)+'</div></td>'+
+              '<td style="padding:12px 12px;"><span style="font-size:11.5px; padding:3px 9px; border-radius:6px; background:'+p.catBg+'; color:'+p.catCol+'; font-weight:500;">'+esc(p.cat)+'</span></td>'+
+              '<td style="padding:12px 12px; color:var(--soft);">'+esc(p.prov)+'</td>'+
+              '<td style="padding:12px 12px; text-align:right; font-family:\'IBM Plex Mono\'; color:var(--muted);">'+esc(p.compraF)+'</td>'+
+              '<td style="padding:12px 12px; text-align:right; font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(p.ventaF)+'</td>'+
+              '<td style="padding:12px 12px; text-align:right;"><span style="font-family:\'IBM Plex Mono\'; font-size:12.5px; font-weight:600; color:'+p.mCol+';">'+esc(p.margen)+'</span></td>'+
+              '<td style="padding:12px 12px;"><div style="display:flex; align-items:center; gap:8px;"><div style="width:54px; height:6px; background:var(--line2); border-radius:3px; overflow:hidden;"><div style="height:100%; width:'+p.stockPct+'%; background:'+p.sCol+'; border-radius:3px;"></div></div><span style="font-family:\'IBM Plex Mono\'; font-size:12px; color:'+p.sCol+'; font-weight:600;">'+esc(p.stock)+'</span></div></td>'+
+              '<td style="padding:12px 18px; text-align:right; white-space:nowrap;">'+
+                (V.canEdit ?
+                  '<button '+click(p.edit)+' title="Editar" style="width:30px; height:30px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; margin-right:5px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-top:1px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke="#5a5e64" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
+                  '<button '+click(p.del)+' title="Eliminar" style="width:30px; height:30px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-top:1px;"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" stroke="#C0392B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+                  : '<span style="font-size:11.5px; color:var(--muted);">Solo lectura</span>')+
+              '</td>'+
+            '</tr>').join('')+
+        '</tbody>'+
+      '</table>'+
+    '</div>'+
+  '</div>';
+}
+function th(label, align, pad){
+  return '<th style="text-align:'+align+'; padding:12px '+pad+'; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600;">'+label+'</th>';
+}
+
+function tCot(V){
+  return ''+
+  '<div style="display:grid; grid-template-columns:1fr 360px; gap:18px; animation:fx-in .4s both; align-items:start;">'+
+    '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:34px 38px; box-shadow:0 1px 3px rgba(0,0,0,.04);">'+
+      '<div style="display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:22px; border-bottom:2px solid var(--ink);">'+
+        '<div style="display:flex; gap:13px; align-items:center;"><div style="width:48px; height:48px; border-radius:11px; background:linear-gradient(150deg,#F2541B,#D8430F); display:flex; align-items:center; justify-content:center;">'+logoSvg(26)+'</div><div><div style="font-family:\'Space Grotesk\'; font-weight:700; font-size:20px; letter-spacing:.03em;">DEVANO</div><div style="font-size:11px; color:var(--muted);">Suministros Industriales SAC · RUC 20498765432</div></div></div>'+
+        '<div style="text-align:right;"><div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:17px; color:var(--accent);">COTIZACIÓN</div><div style="font-size:12px; color:var(--muted); font-family:\'IBM Plex Mono\';">N° COT-2026-0192</div><div style="font-size:12px; color:var(--muted);">24 jun 2026</div></div>'+
+      '</div>'+
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:20px 0; border-bottom:1px solid var(--line2);">'+
+        '<div><div style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:7px;">Cliente</div>'+
+          '<input '+input(V.qCliente)+' data-field="qCliente" value="'+esc(V.quote.cliente)+'" style="width:100%; border:none; border-bottom:1px dashed var(--line); font-size:15px; font-weight:600; padding:3px 0; outline:none;" />'+
+          '<div style="display:flex; align-items:center; gap:6px; margin-top:8px;"><span style="font-size:12px; color:var(--muted);">RUC</span><input '+input(V.qRuc)+' data-field="qRuc" value="'+esc(V.quote.ruc)+'" style="border:none; border-bottom:1px dashed var(--line); font-size:13px; font-family:\'IBM Plex Mono\'; padding:2px 0; outline:none; width:130px;" /></div>'+
+        '</div>'+
+        '<div><div style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:7px;">Validez · Condiciones</div><div style="font-size:13px; color:var(--soft);">15 días calendario</div><div style="font-size:13px; color:var(--soft);">Pago: 50% adelanto · 50% entrega</div><div style="font-size:13px; color:var(--soft);">Moneda: Soles (S/)</div></div>'+
+      '</div>'+
+      '<table style="width:100%; border-collapse:collapse; margin-top:6px;">'+
+        '<thead><tr>'+
+          '<th style="text-align:left; padding:11px 6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border-bottom:1px solid var(--line);">Descripción</th>'+
+          '<th style="text-align:center; padding:11px 6px; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line);">Cant.</th>'+
+          '<th style="text-align:right; padding:11px 6px; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line);">P. Unit.</th>'+
+          '<th style="text-align:right; padding:11px 6px; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line);">Importe</th>'+
+          '<th style="border-bottom:1px solid var(--line); width:30px;"></th>'+
+        '</tr></thead>'+
+        '<tbody>'+
+          V.quoteLines.map(l=>''+
+            '<tr style="border-bottom:1px solid var(--line2);">'+
+              '<td style="padding:11px 6px;"><div style="font-size:13.5px; font-weight:500;">'+esc(l.nombre)+'</div><div style="font-size:11px; color:var(--muted); font-family:\'IBM Plex Mono\';">'+esc(l.sku)+'</div></td>'+
+              '<td style="padding:11px 6px; text-align:center;"><div style="display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:7px; overflow:hidden;"><button '+click(l.dec)+' style="width:24px; height:26px; border:none; background:var(--bg); cursor:pointer; font-size:14px; color:var(--soft);">−</button><span style="width:34px; text-align:center; font-family:\'IBM Plex Mono\'; font-size:13px;">'+esc(l.qty)+'</span><button '+click(l.inc)+' style="width:24px; height:26px; border:none; background:var(--bg); cursor:pointer; font-size:14px; color:var(--soft);">+</button></div></td>'+
+              '<td style="padding:11px 6px; text-align:right; font-family:\'IBM Plex Mono\'; font-size:13px; color:var(--muted);">'+esc(l.unit)+'</td>'+
+              '<td style="padding:11px 6px; text-align:right; font-family:\'IBM Plex Mono\'; font-size:13px; font-weight:600;">'+esc(l.importe)+'</td>'+
+              '<td style="padding:11px 6px; text-align:right;"><button '+click(l.remove)+' style="border:none; background:none; cursor:pointer; color:#C0392B; font-size:15px; line-height:1;">×</button></td>'+
+            '</tr>').join('')+
+        '</tbody>'+
+      '</table>'+
+      '<div style="display:flex; gap:8px; margin-top:14px; align-items:center;">'+
+        '<select '+change(V.qAddSel)+' data-field="qAddSel" style="flex:1; height:36px; border:1px dashed var(--line); border-radius:8px; padding:0 10px; font-size:13px; color:var(--soft); background:var(--bg); outline:none;">'+
+          V.addable.map(a=>'<option value="'+esc(a.sku)+'"'+(a.sku===V.quoteAddSel?' selected':'')+'>'+esc(a.label)+'</option>').join('')+
+        '</select>'+
+        '<button '+click(V.qAddItem)+' style="height:36px; padding:0 14px; border:1px solid var(--accent); border-radius:8px; background:var(--softorange); color:var(--accent2); font-size:13px; font-weight:600; cursor:pointer;">+ Agregar línea</button>'+
+      '</div>'+
+      '<div style="display:flex; justify-content:flex-end; margin-top:22px;">'+
+        '<div style="width:300px;">'+
+          '<div style="display:flex; justify-content:space-between; padding:6px 0; font-size:13.5px;"><span style="color:var(--muted);">Subtotal productos</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(V.qSubtotal)+'</span></div>'+
+          '<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:13.5px;"><input '+input(V.qAddLabel)+' data-field="qAddLabel" value="'+esc(V.quote.addLabel)+'" style="border:none; border-bottom:1px dashed var(--line); font-size:13px; color:var(--soft); padding:2px 0; outline:none; flex:1; margin-right:10px;" /><input '+input(V.qAddCost)+' data-field="qAddCost" value="'+esc(V.quote.addCost)+'" style="width:90px; text-align:right; border:1px solid var(--line); border-radius:6px; font-family:\'IBM Plex Mono\'; font-size:13px; padding:4px 8px; outline:none;" /></div>'+
+          '<div style="display:flex; justify-content:space-between; padding:6px 0; font-size:13.5px; border-top:1px solid var(--line2);"><span style="color:var(--muted);">Base imponible</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(V.qBase)+'</span></div>'+
+          '<div style="display:flex; justify-content:space-between; padding:6px 0; font-size:13.5px;"><span style="color:var(--muted);">IGV (18%)</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(V.qIgv)+'</span></div>'+
+          '<div style="display:flex; justify-content:space-between; padding:12px 14px; margin-top:6px; background:var(--ink); color:#fff; border-radius:9px;"><span style="font-weight:600; font-size:14px;">TOTAL</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600; font-size:18px; color:#fff;">'+esc(V.qTotal)+'</span></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex; flex-direction:column; gap:14px; position:sticky; top:0;">'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px;">'+
+        '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px; margin-bottom:4px;">Margen de esta cotización</div>'+
+        '<div style="font-size:12px; color:var(--muted); margin-bottom:16px;">Ganancia estimada vs. costo de compra</div>'+
+        '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px;"><span style="font-family:\'IBM Plex Mono\'; font-size:30px; font-weight:600; color:var(--green);">'+esc(V.qMarginPct)+'</span><span style="font-size:13px; color:var(--muted);">de margen</span></div>'+
+        '<div style="height:9px; background:var(--line2); border-radius:5px; overflow:hidden; margin-bottom:14px;"><div style="height:100%; width:'+V.qMarginBar+'%; background:linear-gradient(90deg,#2E8B57,#3BA76A); border-radius:5px;"></div></div>'+
+        '<div style="display:flex; justify-content:space-between; font-size:13px; padding:5px 0;"><span style="color:var(--muted);">Costo de compra</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(V.qCost)+'</span></div>'+
+        '<div style="display:flex; justify-content:space-between; font-size:13px; padding:5px 0;"><span style="color:var(--muted);">Ganancia bruta</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600; color:var(--green);">'+esc(V.qProfit)+'</span></div>'+
+      '</div>'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px;">'+
+        '<div style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin-bottom:10px;">Notas para el cliente</div>'+
+        '<textarea '+input(V.qNotas)+' data-field="qNotas" rows="3" style="width:100%; border:1px solid var(--line); border-radius:9px; padding:10px; font-size:13px; resize:none; outline:none; color:var(--soft);">'+esc(V.quote.notas)+'</textarea>'+
+      '</div>'+
+      '<button '+click(V.genQuote)+' '+hover('background:var(--accent2)')+' style="height:48px; border:none; border-radius:11px; background:var(--accent); color:#fff; font-size:15px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:9px; box-shadow:0 8px 20px rgba(242,84,27,.28);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>Generar PDF con logo</button>'+
+      '<button style="height:42px; border:1px solid var(--line); border-radius:11px; background:#fff; color:var(--soft); font-size:13.5px; font-weight:600; cursor:pointer;">Enviar por correo al cliente</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function tRep(V){
+  return ''+
+  '<div style="animation:fx-in .4s both;">'+
+    '<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:20px;">'+
+        '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px; margin-bottom:2px;">Valor de inventario por categoría</div>'+
+        '<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Distribución del capital inmovilizado</div>'+
+        '<div style="display:flex; align-items:center; gap:26px;">'+
+          '<div style="width:158px; height:158px; border-radius:50%; background:'+V.donutBg+'; flex-shrink:0; display:flex; align-items:center; justify-content:center; position:relative;"><div style="width:96px; height:96px; border-radius:50%; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center;"><span style="font-family:\'IBM Plex Mono\'; font-size:18px; font-weight:600;">'+esc(V.invTotal)+'</span><span style="font-size:10.5px; color:var(--muted);">total</span></div></div>'+
+          '<div style="flex:1;">'+
+            V.donutLegend.map(d=>'<div style="display:flex; align-items:center; gap:9px; padding:5px 0;"><span style="width:10px; height:10px; border-radius:3px; background:'+d.col+';"></span><span style="flex:1; font-size:13px;">'+esc(d.label)+'</span><span style="font-family:\'IBM Plex Mono\'; font-size:12.5px; color:var(--soft); font-weight:600;">'+esc(d.pct)+'</span></div>').join('')+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:20px;">'+
+        '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px; margin-bottom:2px;">Margen promedio por categoría</div>'+
+        '<div style="font-size:12px; color:var(--muted); margin-bottom:16px;">Rentabilidad relativa de cada línea</div>'+
+        V.margenCat.map(mc=>''+
+          '<div style="margin-bottom:13px;"><div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12.5px; font-weight:500;">'+esc(mc.label)+'</span><span style="font-size:12.5px; font-family:\'IBM Plex Mono\'; font-weight:600; color:var(--green);">'+esc(mc.pct)+'</span></div><div style="height:8px; background:var(--line2); border-radius:4px; overflow:hidden;"><div style="height:100%; width:'+mc.w+'%; background:'+mc.col+'; border-radius:4px;"></div></div></div>').join('')+
+      '</div>'+
+    '</div>'+
+    '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:20px;">'+
+      '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">'+
+        '<div><div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px;">Rotación y rentabilidad de productos</div><div style="font-size:12px; color:var(--muted);">Top 8 por ingresos generados</div></div>'+
+        '<button style="height:34px; padding:0 14px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:12.5px; font-weight:600; color:var(--soft); cursor:pointer; display:flex; align-items:center; gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="#5a5e64" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Exportar Excel</button>'+
+      '</div>'+
+      '<table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;">'+
+        '<thead><tr style="color:var(--muted);"><th style="text-align:left; padding:9px 6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; font-weight:600;">Producto</th><th style="text-align:right; padding:9px 6px; font-size:11px; text-transform:uppercase; font-weight:600;">Unid. vend.</th><th style="text-align:right; padding:9px 6px; font-size:11px; text-transform:uppercase; font-weight:600;">Ingresos</th><th style="text-align:right; padding:9px 6px; font-size:11px; text-transform:uppercase; font-weight:600;">Margen</th><th style="text-align:left; padding:9px 6px; font-size:11px; text-transform:uppercase; font-weight:600; width:140px;">Rotación</th></tr></thead>'+
+        '<tbody>'+
+          V.rotacion.map(r=>''+
+            '<tr style="border-top:1px solid var(--line2);">'+
+              '<td style="padding:10px 6px;"><span style="font-weight:500;">'+esc(r.nombre)+'</span> <span style="font-size:11px; color:var(--muted); font-family:\'IBM Plex Mono\';">· '+esc(r.sku)+'</span></td>'+
+              '<td style="padding:10px 6px; text-align:right; font-family:\'IBM Plex Mono\';">'+esc(r.ventas)+'</td>'+
+              '<td style="padding:10px 6px; text-align:right; font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(r.ingresos)+'</td>'+
+              '<td style="padding:10px 6px; text-align:right; font-family:\'IBM Plex Mono\'; color:var(--green); font-weight:600;">'+esc(r.margen)+'</td>'+
+              '<td style="padding:10px 6px;"><div style="height:6px; background:var(--line2); border-radius:3px; overflow:hidden;"><div style="height:100%; width:'+r.w+'%; background:var(--steel); border-radius:3px;"></div></div></td>'+
+            '</tr>').join('')+
+        '</tbody>'+
+      '</table>'+
+    '</div>'+
+  '</div>';
+}
+
+function tProv(V){
+  return ''+
+  '<div style="animation:fx-in .4s both;">'+
+    '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">'+
+      V.provCards.map(s=>''+
+        '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px; position:relative;">'+
+          '<div style="position:absolute; top:16px; right:16px; width:26px; height:26px; border-radius:8px; background:'+s.medalBg+'; color:'+s.medalCol+'; display:flex; align-items:center; justify-content:center; font-family:\'IBM Plex Mono\'; font-weight:600; font-size:12px;">'+esc(s.rank)+'</div>'+
+          '<div style="width:42px; height:42px; border-radius:11px; background:'+s.tint+'; display:flex; align-items:center; justify-content:center; font-family:\'Space Grotesk\'; font-weight:700; color:'+s.iconCol+'; font-size:16px; margin-bottom:13px;">'+esc(s.ini)+'</div>'+
+          '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15.5px;">'+esc(s.name)+'</div>'+
+          '<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">'+esc(s.rubro)+'</div>'+
+          '<div style="display:flex; align-items:center; gap:6px; margin-bottom:12px;"><span style="color:var(--amber); font-size:13px; letter-spacing:1px;">'+esc(s.stars)+'</span><span style="font-family:\'IBM Plex Mono\'; font-size:12.5px; font-weight:600;">'+esc(s.rating)+'</span></div>'+
+          '<div style="display:flex; justify-content:space-between; padding:7px 0; border-top:1px solid var(--line2); font-size:12.5px;"><span style="color:var(--muted);">Valor de compra</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(s.valor)+'</span></div>'+
+          '<div style="display:flex; justify-content:space-between; padding:7px 0; font-size:12.5px;"><span style="color:var(--muted);">Productos activos</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600;">'+esc(s.productos)+'</span></div>'+
+          '<div style="display:flex; justify-content:space-between; padding:7px 0; font-size:12.5px;"><span style="color:var(--muted);">Entregas a tiempo</span><span style="font-family:\'IBM Plex Mono\'; font-weight:600; color:'+s.entCol+';">'+esc(s.entregas)+'</span></div>'+
+        '</div>').join('')+
+    '</div>'+
+  '</div>';
+}
+
+function tUsr(V){
+  return ''+
+  '<div style="animation:fx-in .4s both;">'+
+    '<div style="display:flex; align-items:center; margin-bottom:16px;">'+
+      '<div><div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:16px;">Equipo y niveles de acceso</div><div style="font-size:12.5px; color:var(--muted);">5 usuarios · 3 roles configurados</div></div>'+
+      '<div style="flex:1;"></div>'+
+      '<button '+click(V.addUser)+' '+hover('background:var(--accent2)')+' style="height:38px; padding:0 16px; border:none; border-radius:9px; background:var(--accent); color:#fff; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:7px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>Invitar usuario</button>'+
+    '</div>'+
+    '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:16px; align-items:start;">'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; overflow:hidden;">'+
+        V.users.map(u=>''+
+          '<div style="display:flex; align-items:center; gap:13px; padding:14px 18px; border-bottom:1px solid var(--line2);">'+
+            '<div style="width:38px; height:38px; border-radius:50%; background:'+u.avBg+'; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px;">'+esc(u.ini)+'</div>'+
+            '<div style="flex:1; min-width:0;"><div style="font-size:13.5px; font-weight:600;">'+esc(u.name)+'</div><div style="font-size:11.5px; color:var(--muted); font-family:\'IBM Plex Mono\';">'+esc(u.email)+'</div></div>'+
+            '<span style="font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:7px; background:'+u.rb+'; color:'+u.rc+';">'+esc(u.role)+'</span>'+
+            '<div style="display:flex; align-items:center; gap:6px; width:96px;"><span style="width:7px; height:7px; border-radius:50%; background:'+u.sd+';"></span><span style="font-size:12px; color:var(--soft);">'+esc(u.status)+'</span></div>'+
+            '<span style="font-size:11.5px; color:var(--muted); width:80px; text-align:right;">'+esc(u.last)+'</span>'+
+          '</div>').join('')+
+      '</div>'+
+      '<div style="background:#fff; border:1px solid var(--line); border-radius:13px; padding:20px;">'+
+        '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:15px; margin-bottom:3px;">Matriz de permisos</div>'+
+        '<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Acceso por módulo y rol</div>'+
+        '<table style="width:100%; border-collapse:collapse;">'+
+          '<thead><tr><th style="text-align:left; padding:8px 4px; font-size:11px; color:var(--muted); text-transform:uppercase;">Módulo</th><th style="padding:8px 4px; font-size:11px; color:var(--muted);">Admin</th><th style="padding:8px 4px; font-size:11px; color:var(--muted);">Vend.</th><th style="padding:8px 4px; font-size:11px; color:var(--muted);">Almac.</th></tr></thead>'+
+          '<tbody>'+
+            V.permMatrix.map(row=>''+
+              '<tr style="border-top:1px solid var(--line2);">'+
+                '<td style="padding:10px 4px; font-size:13px; font-weight:500;">'+esc(row.mod)+'</td>'+
+                '<td style="padding:10px 4px; text-align:center;"><span style="font-size:14px; color:'+row.a.col+';">'+row.a.sym+'</span></td>'+
+                '<td style="padding:10px 4px; text-align:center;"><span style="font-size:14px; color:'+row.v.col+';">'+row.v.sym+'</span></td>'+
+                '<td style="padding:10px 4px; text-align:center;"><span style="font-size:14px; color:'+row.w.col+';">'+row.w.sym+'</span></td>'+
+              '</tr>').join('')+
+          '</tbody>'+
+        '</table>'+
+        '<div style="display:flex; gap:16px; margin-top:14px; font-size:11.5px; color:var(--muted);"><span>● Total</span><span>◐ Solo lectura</span><span>○ Sin acceso</span></div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function tApp(V){
+  let content = '';
+  if(V.isDash) content = tDash(V);
+  else if(V.isProd) content = tProd(V);
+  else if(V.isCot) content = tCot(V);
+  else if(V.isRep) content = tRep(V);
+  else if(V.isProv) content = tProv(V);
+  else if(V.isUsr) content = tUsr(V);
+  return ''+
+  '<div style="display:flex; height:100vh; background:var(--bg); overflow:hidden;">'+
+    tSidebar(V)+
+    '<div style="flex:1; display:flex; flex-direction:column; min-width:0;">'+
+      tTopbar(V)+
+      '<div style="flex:1; overflow-y:auto; padding:26px;">'+content+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function tModal(V){
+  if(!V.modalOpen) return '';
+  const d = V.draft;
+  return ''+
+  '<div '+click(V.closeModal)+' style="position:fixed; inset:0; background:rgba(20,22,26,.5); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:50; animation:fx-in .2s both;">'+
+    '<div '+click(V.stop)+' style="width:560px; max-width:94vw; max-height:92vh; overflow-y:auto; background:#fff; border-radius:15px; box-shadow:0 24px 60px rgba(0,0,0,.3); animation:fx-pop .26s cubic-bezier(.2,.8,.2,1) both;">'+
+      '<div style="display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid var(--line);"><div><div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:17px;">'+esc(V.modalTitle)+'</div><div style="font-size:12px; color:var(--muted);">Complete los datos del producto y su costeo</div></div><button '+click(V.closeModal)+' style="width:32px; height:32px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; font-size:16px; color:var(--muted);">×</button></div>'+
+      '<div style="padding:22px 24px;">'+
+        '<label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Nombre del producto</label>'+
+        '<input '+input(V.set.nombre)+' data-field="d-nombre" value="'+esc(d.nombre)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; outline:none; margin-bottom:16px;" />'+
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">SKU / Código</label><input '+input(V.set.sku)+' data-field="d-sku" value="'+esc(d.sku)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; font-family:\'IBM Plex Mono\'; outline:none;" /></div>'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Unidad</label><input '+input(V.set.unidad)+' data-field="d-unidad" value="'+esc(d.unidad)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; outline:none;" /></div>'+
+        '</div>'+
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Categoría</label><select '+change(V.set.cat)+' style="width:100%; height:42px; padding:0 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; outline:none; background:#fff;">'+V.allCats.map(c=>'<option'+(c===d.cat?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></div>'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Proveedor</label><select '+change(V.set.prov)+' style="width:100%; height:42px; padding:0 11px; border:1px solid var(--line); border-radius:9px; font-size:14px; outline:none; background:#fff;">'+V.allProvs.map(p=>'<option'+(p===d.prov?' selected':'')+'>'+esc(p)+'</option>').join('')+'</select></div>'+
+        '</div>'+
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px;">'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Stock actual</label><input '+input(V.set.stock)+' data-field="d-stock" value="'+esc(d.stock)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; font-family:\'IBM Plex Mono\'; outline:none;" /></div>'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Stock mínimo (alerta)</label><input '+input(V.set.stockMin)+' data-field="d-stockMin" value="'+esc(d.stockMin)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; font-family:\'IBM Plex Mono\'; outline:none;" /></div>'+
+        '</div>'+
+        '<div style="background:var(--bg); border-radius:11px; padding:16px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:end;">'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Precio compra</label><input '+input(V.set.compra)+' data-field="d-compra" value="'+esc(d.compra)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; font-family:\'IBM Plex Mono\'; outline:none;" /></div>'+
+          '<div><label style="display:block; font-size:12px; font-weight:600; color:var(--soft); margin-bottom:6px;">Precio venta</label><input '+input(V.set.venta)+' data-field="d-venta" value="'+esc(d.venta)+'" style="width:100%; height:42px; padding:0 13px; border:1px solid var(--accent); border-radius:9px; font-size:14px; font-family:\'IBM Plex Mono\'; outline:none;" /></div>'+
+          '<div style="text-align:center; padding-bottom:6px;"><div style="font-size:11px; color:var(--muted);">Margen</div><div style="font-family:\'IBM Plex Mono\'; font-size:22px; font-weight:600; color:var(--green);">'+esc(V.draftMargin)+'</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex; gap:10px; justify-content:flex-end; padding:16px 24px; border-top:1px solid var(--line);"><button '+click(V.closeModal)+' style="height:42px; padding:0 20px; border:1px solid var(--line); border-radius:9px; background:#fff; font-size:13.5px; font-weight:600; color:var(--soft); cursor:pointer;">Cancelar</button><button '+click(V.saveProduct)+' '+hover('background:var(--accent2)')+' style="height:42px; padding:0 24px; border:none; border-radius:9px; background:var(--accent); color:#fff; font-size:13.5px; font-weight:600; cursor:pointer;">'+esc(V.saveLabel)+'</button></div>'+
+    '</div>'+
+  '</div>';
+}
+
+function tDelete(V){
+  if(!V.delOpen) return '';
+  return ''+
+  '<div '+click(V.cancelDel)+' style="position:fixed; inset:0; background:rgba(20,22,26,.5); display:flex; align-items:center; justify-content:center; z-index:55; animation:fx-in .2s both;">'+
+    '<div '+click(V.stop)+' style="width:380px; background:#fff; border-radius:15px; padding:26px; text-align:center; box-shadow:0 24px 60px rgba(0,0,0,.3); animation:fx-pop .24s both;">'+
+      '<div style="width:48px; height:48px; border-radius:12px; background:#FBE9E0; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" stroke="#C0392B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'+
+      '<div style="font-family:\'Space Grotesk\'; font-weight:600; font-size:17px; margin-bottom:6px;">¿Eliminar producto?</div>'+
+      '<div style="font-size:13.5px; color:var(--muted); margin-bottom:22px;">'+esc(V.delName)+' se eliminará del inventario. Esta acción no se puede deshacer.</div>'+
+      '<div style="display:flex; gap:10px;"><button '+click(V.cancelDel)+' style="flex:1; height:42px; border:1px solid var(--line); border-radius:9px; background:#fff; font-size:13.5px; font-weight:600; color:var(--soft); cursor:pointer;">Cancelar</button><button '+click(V.confirmDelete)+' style="flex:1; height:42px; border:none; border-radius:9px; background:var(--red); color:#fff; font-size:13.5px; font-weight:600; cursor:pointer;">Eliminar</button></div>'+
+    '</div>'+
+  '</div>';
+}
+
+function tToast(V){
+  if(!V.toast) return '';
+  return '<div style="position:fixed; bottom:26px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:13px 22px; border-radius:11px; font-size:13.5px; font-weight:500; z-index:80; box-shadow:0 12px 32px rgba(0,0,0,.3); display:flex; align-items:center; gap:10px; animation:fx-toast .3s cubic-bezier(.2,.8,.2,1) both;"><span style="width:20px; height:20px; border-radius:50%; background:var(--green); display:inline-flex; align-items:center; justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'+esc(V.toast)+'</div>';
+}
+
+/* ---------- render ---------- */
+const ROOT_STYLE = "--ink:#16181D; --ink2:#232730; --panel:#191C22; --panel2:#23272F; --bg:#EEEDE8; --card:#FFFFFF; --line:#E4E3DD; --line2:#EFEEE9; --muted:#73777E; --soft:#3A3F47; --accent:#F2541B; --accent2:#D8430F; --steel:#3B6B8F; --green:#2E8B57; --amber:#C2891C; --red:#C0392B; --softorange:#FBE9E0; font-family:'IBM Plex Sans',system-ui,sans-serif; color:#16181D; -webkit-font-smoothing:antialiased; line-height:1.45;";
+
+const appEl = document.getElementById('app');
+
+function render(){
+  _handlers = [];
+  const V = computeVals();
+  let html = '';
+  if(V.isLogin) html += tLogin(V);
+  if(V.isApp) html += tApp(V);
+  html += tModal(V);
+  html += tDelete(V);
+  html += tToast(V);
+
+  // preserve focus + caret across innerHTML swap
+  const a = document.activeElement;
+  let field=null, ss=null, se=null;
+  if(a && appEl.contains(a) && a.dataset && a.dataset.field){ field=a.dataset.field; try{ ss=a.selectionStart; se=a.selectionEnd; }catch(_){ } }
+
+  appEl.innerHTML = '<div style="'+ROOT_STYLE+'">'+html+'</div>';
+
+  if(field){
+    const n = appEl.querySelector('[data-field="'+field+'"]');
+    if(n){ n.focus(); if(ss!=null){ try{ n.setSelectionRange(ss,se); }catch(_){ } } }
+  }
+}
+
+/* ---------- delegated event wiring (attached once) ---------- */
+appEl.addEventListener('click', (e)=>{
+  const t = e.target.closest('[data-click]');
+  if(!t || !appEl.contains(t)) return;
+  const fn = _handlers[+t.getAttribute('data-click')];
+  if(typeof fn === 'function') fn(e);
+});
+appEl.addEventListener('input', (e)=>{
+  const t = e.target.closest('[data-input]');
+  if(!t) return;
+  const fn = _handlers[+t.getAttribute('data-input')];
+  if(typeof fn === 'function') fn(e);
+});
+appEl.addEventListener('change', (e)=>{
+  const t = e.target.closest('[data-change]');
+  if(!t) return;
+  const fn = _handlers[+t.getAttribute('data-change')];
+  if(typeof fn === 'function') fn(e);
+});
+appEl.addEventListener('mouseover', (e)=>{
+  const t = e.target.closest('[data-hover]');
+  if(!t || !appEl.contains(t)) return;
+  if(t._oc == null) t._oc = t.getAttribute('style') || '';
+  t.setAttribute('style', t._oc + ';' + t.getAttribute('data-hover'));
+});
+appEl.addEventListener('mouseout', (e)=>{
+  const t = e.target.closest('[data-hover]');
+  if(!t || !appEl.contains(t)) return;
+  if(t._oc != null) t.setAttribute('style', t._oc);
+});
+
+render();
+
+})();
+</script>
+</body>
+</html>
