@@ -1,0 +1,10 @@
+# Documentos internos — NO publicar en el sitio
+Proforma-MINDOOS-DEVANO.pdf
+proforma-devano.html
+
+# Entorno / herramientas
+.git
+.vercel
+node_modules
+.DS_Store
+Thumbs.db
